@@ -1,21 +1,8 @@
 """Data processing functions."""
-import re
 import json
 import pandas as pd
 
-def extract_hamlet(df):
-    """
-    Exracts Hamlet from the given DataFrame.
-    This is used for testing purposes.
-    """
-    # Filter the DataFrame for the play "Hamlet"
-    hamlet_rows = []
-    for _, row in df.iterrows():
-        if row["Play"] == "Hamlet":
-            hamlet_rows.append(row)
-    hamlet_df = pd.DataFrame(hamlet_rows).reset_index(drop=True)
-
-    return hamlet_df
+from utils import extract_names
 
 def process_act_scene_line(df):
     """
@@ -50,41 +37,6 @@ def process_act_scene_line(df):
     df["Line"] = lines
 
     return df
-
-def extract_names(text: str):
-    """
-    Extracts a list of names from a given text string,
-    for use in the 'Characters Present' field.
-    Input: text string
-    Output: list of names
-    """
-    names = re.split(r",? and |, |\. ", text)
-
-    # Clean up names
-    cleaned_names = []
-    for name in names:
-        if name is None or name.strip() == "":
-            continue
-
-        # remove stage directions
-        if "Enter" in name or "Exit" in name or "Exeunt" in name or "Re-enter" in name:
-            name = name.replace(
-                "Enter", "").replace(
-                    "Exit", "").replace(
-                        "Exeunt", "").replace(
-                            "Re-enter", "").strip()
-
-        # remove if all lowercase
-        elif name.islower():
-            continue
-
-        # remove any lowercase words from names
-        words = [word for word in name.split(" ") if not word.islower()]
-        name = " ".join(words)
-
-        cleaned_names.append(name.strip())
-
-    return cleaned_names
 
 def process_stage_directions(df):
     """
@@ -154,34 +106,6 @@ def process_stage_directions(df):
 
     return new_df
 
-def extract_unique_players(df):
-    """
-    Maps character names to plays
-    Input: DataFrame of Shakespeare's plays
-    Output: List of dictionaries with unique players for each play
-    """
-    plays = df["Play"].unique()
-    result = []
-    for play in plays:
-
-        play_df = []
-        for _, row in df.iterrows():
-            if row["Play"] == play:
-                play_df.append(row)
-        play_df = pd.DataFrame(play_df)
-
-        players = set()
-        for _, row in play_df.iterrows():
-            if (row["Player"] is not None and not pd.isna(row["Player"])
-                and row["Player"].strip() != ""
-                and row["Player"].isupper()):
-                players.add(row["Player"].strip())
-        result.append({
-            "Play": play,
-            "Players": sorted(players)
-        })
-    return result
-
 def chunk(df, chunk_size=150):
     """
     Chunks a JSON by the number of words in the PlayerLine field.
@@ -239,35 +163,21 @@ def merge_chunks(chunks):
     Output format:
     {
         "Play": "Hamlet",
-        "PlayerLine": "\nHAMLET: Whether 'tis nobler in the mind to suffer
-        \nThe slings and arrows of outrageous fortune,
-        \nOr to take arms against a sea of troubles,
-        \nAnd by opposing end them? To die: to sleep,
-        \nNo more, and by a sleep to say we end
-        \nThe heart-ache and the thousand natural shocks
-        \nThat flesh is heir to, 'tis a consummation
-        \nDevoutly to be wish'd. To die, to sleep,
-        \nTo sleep: perchance to dream: ay, there's the rub,
-        \nFor in that sleep of death what dreams may come
-        \nWhen we have shuffled off this mortal coil,
-        \nMust give us pause: there's the respect
-        \nThat makes calamity of so long life,
-        \nFor who would bear the whips and scorns of time,
-        \nThe oppressor's wrong, the proud man's contumely,
-        \nThe pangs of despised love, the law's delay,
-        \nThe insolence of office and the spurns
-        \nThat patient merit of the unworthy takes,",
+        "PlayerLine": Enter HAMLET\n\nHAMLET: To be, or not to be: that is the question: [etc.]
         "Act": "3",
         "Scene": "1",
         "Speakers": [
-            "HAMLET"
+            "HAMLET",
+            "LORD POLONIUS"
         ],
-        "firstLine": "65",
-        "lastLine": "82",
+        "firstLine": "63",
+        "lastLine": "79",
         "CharactersPresent": [
             "HAMLET",
+            "POLONIUS",
+            "KING CLAUDIUS",
             "OPHELIA"
-        ]
+        ],
     },
     """
     merged = {}
@@ -294,13 +204,10 @@ def merge_chunks(chunks):
             if c.get("Characters"):
                 characters_present.update(c["Characters"])
 
-            # Add the speaker's name to the text if the speaker changes
-            try:
-                if not speaker_order or speaker_order[-1] != c["Player"]:
-                    speaker_order.append(c["Player"])
-                    c["PlayerLine"] = "\n" + c["Player"] + ": " + c["PlayerLine"]
-            except TypeError as exc:
-                raise TypeError("Error processing chunk: " + json.dumps(c, indent=2)) from exc
+            # If there is a new speaker, add them to the speaker order
+            if not speaker_order or speaker_order[-1] != c["Player"]:
+                speaker_order.append(c["Player"])
+                c["PlayerLine"] = "\n" + c["Player"] + ": " + c["PlayerLine"]
 
         # If chunk has a Speakers field, add them to the speakers
         elif c.get("Speakers"):
