@@ -1,11 +1,13 @@
 """Data processing functions."""
-
-import pandas as pd
 import re
 import json
+import pandas as pd
 
 def extract_hamlet(df):
-    """Exracts Hamlet from the given DataFrame."""
+    """
+    Exracts Hamlet from the given DataFrame.
+    This is used for testing purposes.
+    """
     # Filter the DataFrame for the play "Hamlet"
     hamlet_rows = []
     for _, row in df.iterrows():
@@ -20,6 +22,8 @@ def process_act_scene_line(df):
     Processes the ActSceneLine column to extract Act, Scene, and Line numbers.
     The format is expected to be 'Act.Scene.Line'.
     If ActSceneLine is None, it looks for the next non-None value.
+    Input: DataFrame of Shakespeare's plays
+    Output: Same DataFrame with additional 'Act', 'Scene', and 'Line' columns.
     """
     acts = []
     scenes = []
@@ -51,6 +55,8 @@ def extract_names(text: str):
     """
     Extracts a list of names from a given text string,
     for use in the 'Characters Present' field.
+    Input: text string
+    Output: list of names
     """
     names = re.split(r",? and |, |\. ", text)
 
@@ -83,10 +89,10 @@ def extract_names(text: str):
 def process_stage_directions(df):
     """
     Processes the dataframe to add a characters present column.
+    Input: Dataframe of Shakespeare's plays
+    Output: Same dataframe with an additional 'Characters' column
     """
-    stage_directions = []
     new_lines = []
-    new_lines_with_sd = []
     characters = set()
     current_play = None
     current_act = None
@@ -108,20 +114,15 @@ def process_stage_directions(df):
         if row["ActSceneLine"] is None or pd.isna(row["ActSceneLine"]):
             sd = row["PlayerLine"] # sd stands for "Stage Direction"
 
-            # Drop unnecessary columns
-            sd_row = row.drop(["Player", "PlayerLinenumber",
-                                "ActSceneLine"]).to_dict()
-
             # extract names
             names = extract_names(sd)
 
+            # If characters enter the scene, add them to the characters set
             if "Enter" in sd or "Re-enter" in sd:
-                sd_row["StageDirection"] = "Enter"
                 characters.update(names)
 
+            # If characters exit the scene, remove them from the characters set
             elif "Exit" in sd:
-                sd_row["StageDirection"] = "Exit"
-
                 # if there's an exit with no names, assume the speaker is exiting
                 if not names or names == [""]:
                     names = [current_speaker]
@@ -129,47 +130,35 @@ def process_stage_directions(df):
                 characters.difference_update(names)
 
             elif "Exeunt all but" in sd:
-                sd_row["StageDirection"] = "Exuent all but"
-
                 # assume the names are the ones remaining
                 characters = set(names)
 
+            # 'exuent' is used for multiple characters exiting
             elif "Exeunt" in sd:
-                sd_row["StageDirection"] = "Exeunt"
-
                 # if there's an exit with no names, assume all are exiting
                 if not names or names == [""]:
                     names = list(characters)
 
                 characters.difference_update(names)
 
-            else:
-                sd_row["StageDirection"] = "Other"
-
-            sd_row["Characters"] = names
-            stage_directions.append(sd_row)
-            new_lines_with_sd.append(sd_row)
-
-        # Add character columns to the rest of the lines
         else:
             # Reset current speaker
             current_speaker = row["Player"]
 
+        # Add character columns to the dataframe
         new_line = row.copy()
         new_line["Characters"] = list(characters)
         new_lines.append(new_line)
-        new_lines_with_sd.append(new_line)
 
-    stage_directions = pd.DataFrame(stage_directions)
     new_df = pd.DataFrame(new_lines)
-    new_lines_with_sd = pd.DataFrame(new_lines_with_sd)
 
-    return new_df, stage_directions, new_lines_with_sd
+    return new_df
 
 def extract_unique_players(df):
     """
-    Returns a list of JSON objects, each with 'Play' and 'Players' fields.
-    'Play' is the play name, 'Players' is a sorted list of unique players in that play.
+    Maps character names to plays
+    Input: DataFrame of Shakespeare's plays
+    Output: List of dictionaries with unique players for each play
     """
     plays = df["Play"].unique()
     result = []
@@ -196,6 +185,8 @@ def extract_unique_players(df):
 def chunk(df, chunk_size=150):
     """
     Chunks a JSON by the number of words in the PlayerLine field.
+    Input: DataFrame of Shakespeare's plays
+    Output: List of JSON objects (dicts) representing chunks of the play.
     """
 
     chunks = []
@@ -219,20 +210,12 @@ def chunk(df, chunk_size=150):
               or current_chunk["Act"] != row["Act"]
               or current_chunk["Scene"] != row["Scene"]):
 
-            # If the current chunk is from the old format, merge it with the previous chunk
-            if "firstLine" not in current_chunk:
-                #print("Current chunk:", json.dumps(current_chunk, indent=2))
-                #print("Previous chunk:", json.dumps(chunks[-1], indent=2))
-                #print("Current row:", json.dumps(row_dict, indent=2))
-                #chunks[-1] = merge_chunks([chunks[-1], current_chunk])
-                #current_chunk = row_dict
-                #current_word_count = row_word_count
-                chunks.append(merge_chunks([row_dict]))
-            else:
-                chunks.append(current_chunk)
+            # Add the current chunk to the list of chunks
+            chunks.append(current_chunk)
 
-            current_chunk = {}
-            current_word_count = 0
+            # Reset the current chunk with the new row
+            current_chunk = merge_chunks([row_dict])
+            current_word_count = row_word_count
 
         # Otherwise, merge the current row into the current chunk
         else:
@@ -247,9 +230,45 @@ def chunk(df, chunk_size=150):
 
 def merge_chunks(chunks):
     """
-    Merges a list of JSON objects (dicts) into a single JSON object.
-    For string fields, concatenates text. For list fields, appends lists.
-    For other fields, keeps the last value.
+    Merges a list of JSON objects (dicts) into a single JSON object,
+    and formats it into the new format.
+    Input: List of JSON objects (dicts) 
+        (normally just two, but one chunk can also be passed to convert it to the new format)
+    Output: Merged JSON object (dict) in the new format
+
+    Output format:
+    {
+        "Play": "Hamlet",
+        "PlayerLine": "\nHAMLET: Whether 'tis nobler in the mind to suffer
+        \nThe slings and arrows of outrageous fortune,
+        \nOr to take arms against a sea of troubles,
+        \nAnd by opposing end them? To die: to sleep,
+        \nNo more, and by a sleep to say we end
+        \nThe heart-ache and the thousand natural shocks
+        \nThat flesh is heir to, 'tis a consummation
+        \nDevoutly to be wish'd. To die, to sleep,
+        \nTo sleep: perchance to dream: ay, there's the rub,
+        \nFor in that sleep of death what dreams may come
+        \nWhen we have shuffled off this mortal coil,
+        \nMust give us pause: there's the respect
+        \nThat makes calamity of so long life,
+        \nFor who would bear the whips and scorns of time,
+        \nThe oppressor's wrong, the proud man's contumely,
+        \nThe pangs of despised love, the law's delay,
+        \nThe insolence of office and the spurns
+        \nThat patient merit of the unworthy takes,",
+        "Act": "3",
+        "Scene": "1",
+        "Speakers": [
+            "HAMLET"
+        ],
+        "firstLine": "65",
+        "lastLine": "82",
+        "CharactersPresent": [
+            "HAMLET",
+            "OPHELIA"
+        ]
+    },
     """
     merged = {}
     text = ""
@@ -297,6 +316,7 @@ def merge_chunks(chunks):
         else:
             text += "\n" + c["PlayerLine"]
 
+    # Process the merged chunk format
     merged = chunks[0].copy()
     merged["PlayerLine"] = text
     merged["Speakers"] = list(speakers)
