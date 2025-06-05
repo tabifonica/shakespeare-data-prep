@@ -16,20 +16,29 @@ def prepare_shakespeare_data(input_csv="shakespeare.csv", output_json="shakespea
     Output: JSON file with chunked data.
     """
     # Read and print the CSV file
+    print(f"\033[1;34mReading Shakespeare data from '{input_csv}'...\033[0m")
     df = pd.read_csv(input_csv)
 
     # Split the 'Act', 'Scene', and 'Line' columns into separate columns
+    print("\033[1;34mProcessing Act, Scene, and Line numbers...\033[0m")
     shakespeare = data.process_act_scene_line(df)
 
     # Process stage directions into a 'CharactersPresent' column
+    print("\033[1;34mProcessing stage directions...\033[0m")
     shakespeare_aug = data.process_stage_directions(shakespeare)
 
     # Chunk lines
+    print("\033[1;34mChunking Shakespeare data...\033[0m")
     shakespeare_chunked = data.chunk(shakespeare_aug)
 
     # Convert chunked data to json format
+    print(f"\033[1;34mSaving chunked data to '{output_json}'...\033[0m")
     with open(output_json, "w", encoding="utf-8") as f:
         json.dump(shakespeare_chunked, f, indent=2)
+
+    # success message
+    print(f"\033[1;32mSuccess! Shakespeare data has been chunked \
+           and saved to '{output_json}'.\033[0m")
 
 if __name__ == "__main__":
     # Allow user to specify input and output file paths

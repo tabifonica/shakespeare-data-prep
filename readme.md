@@ -53,4 +53,4 @@ Three primary data processing functions are performed on the data.
 1. Make an activate a python virtual environment: python3 -m venv venv
 2. Activate the virtual environment (the following code is for Mac): source venv/bin/activate
 3. Install requirements: python3 -r requirements.txt
-4. Run: python3 shakespeare-data-prep.py
+4. Run: python3 main.py
