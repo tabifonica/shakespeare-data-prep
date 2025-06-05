@@ -1,6 +1,9 @@
-Breaks Shakespeare's plays into chunks for use in Retrieval Augmented Generation (RAG).
+Breaks Shakespeare's plays into chunks for use in Retrieval Augmented Generation (RAG)
+for a generative language model.
 Also processes metadata for each chunk,
 including Act, Scene, firstLine, lastLine, Speakers and CharactersPresent.
+
+**Language model with RAG repository:** https://github.com/tabifonica/shakespeare-data-prep
 
 Input format: a CSV file of Shakespeare's plays "shakespeare.csv" with the following columns:
     "Dataline" - an index
